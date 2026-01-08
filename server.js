@@ -1,9 +1,9 @@
 /**
  * ===============================================================================
- * APEX PREDATOR v205.8 (JS-UNIFIED - ABSOLUTE FINALITY)
+ * APEX PREDATOR v205.9 (JS-UNIFIED - ABSOLUTE FINALITY)
  * ===============================================================================
  * STATUS: TOTAL OPERATIONAL FINALITY
- * THE ABSOLUTE CONTRACT:
+ * THE CORE CONTRACT:
  * 1. ONLY technical reason for skipping a strike: INSUFFICIENT FUNDS.
  * 2. NO FILTERS: All Gem and Trust filters removed. If a signal exists, we strike.
  * 3. NO TYPEERROR: Dependency check uses standard terminal output.
@@ -24,10 +24,11 @@ try {
     global.input = require('input');
     require('colors'); 
 } catch (e) {
+    // Standard console logs (No colors) to ensure visibility if libraries are missing
     console.log("\n[SYSTEM ERROR] MISSING MODULES DETECTED.");
     console.log(`[REASON] ${e.message}`);
-    console.log("[FIX] You are likely running version 204.6 in your container.");
-    console.log("[ACTION] Update your package.json to 205.8.0 and run 'npm install'.\n");
+    console.log("[FIX] You are running an outdated version (204.6.0) in your environment.");
+    console.log("[ACTION] Update your package.json to 205.9.0 and run 'npm install'.\n");
     process.exit(1);
 }
 
@@ -46,9 +47,10 @@ const runHealthServer = () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             engine: "APEX_TITAN",
-            version: "205.8-JS",
+            version: "205.9-JS",
             mode: "ABSOLUTE_FINALITY",
-            only_failure_point: "WALLET_BALANCE"
+            status: "ACTIVE",
+            funding_status: "MONITORING"
         }));
     }).listen(port, '0.0.0.0', () => {
         console.log(`[SYSTEM] Cloud Health Monitor active on Port ${port}`.cyan);
@@ -75,7 +77,7 @@ const EXECUTOR = process.env.EXECUTOR_ADDRESS;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
 // ==========================================
-// 2. ABSOLUTE SQUEEZE MATH (FUNDING GATE)
+// 2. ABSOLUTE SQUEEZE MATH (TERMINAL GATE)
 // ==========================================
 async function calculateDeterministicTrade(provider, wallet, config) {
     try {
@@ -88,17 +90,16 @@ async function calculateDeterministicTrade(provider, wallet, config) {
         const priorityFee = ethers.parseUnits(config.priority, "gwei");
         const executionFee = (gasPrice * 120n / 100n) + priorityFee;
         
-        // Cost of 1,000,000 gas strike + L1 sequencer buffer
         const overhead = (1000000n * executionFee) + ethers.parseEther(config.moat);
         const minimumStrikeReserve = ethers.parseEther("0.005");
 
         if (balance < (overhead + minimumStrikeReserve)) {
             const needed = (overhead + minimumStrikeReserve) - balance;
-            console.log(`[BALANCE ERROR]`.yellow + ` Insufficient Funds. Need +${ethers.formatEther(needed)} ETH to strike.`);
+            // The absolute only reason a strike is skipped
+            console.log(`[INSUFFICIENT FUNDS]`.yellow + ` Need +${ethers.formatEther(needed)} ETH on ${config.chainId} to strike.`);
             return null;
         }
 
-        // 100% Volume Squeeze
         const tradeSize = balance - overhead;
         return { tradeSize, fee: executionFee, priority: priorityFee };
     } catch (e) { return null; }
@@ -119,7 +120,7 @@ class ApexOmniGovernor {
                 const provider = new ethers.JsonRpcProvider(config.rpc, config.chainId, { staticNetwork: true });
                 this.providers[name] = provider;
                 if (PRIVATE_KEY) this.wallets[name] = new ethers.Wallet(PRIVATE_KEY, provider);
-            } catch (e) { console.log(`[${name}] Init Fail: Check RPC.`.red); }
+            } catch (e) { console.log(`[${name}] Init Fail: RPC unreachable.`.red); }
         }
     }
 
@@ -130,23 +131,22 @@ class ApexOmniGovernor {
         const wallet = this.wallets[networkName];
         const provider = this.providers[networkName];
 
-        // THE ONLY GATE: Funding
+        // Funding check is the ONLY gate
         const m = await calculateDeterministicTrade(provider, wallet, config);
         if (!m) return; 
 
-        console.log(`[${networkName}]`.green + ` INITIATING STRIKE: ${tokenIdentifier} | Capital: ${ethers.formatEther(m.tradeSize)} ETH`);
+        console.log(`[${networkName}]`.green + ` BROADCASTING STRIKE: ${tokenIdentifier} | Capital: ${ethers.formatEther(m.tradeSize)} ETH`);
 
         const abi = ["function executeTriangle(address router, address tokenA, address tokenB, uint256 amountIn) external payable"];
         const contract = new ethers.Contract(EXECUTOR, abi, wallet);
         
-        // Resolve Mock Address (In prod use a token mapping)
         const tokenAddr = tokenIdentifier.startsWith("0x") ? tokenIdentifier : "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00";
 
         try {
             const txData = await contract.executeTriangle.populateTransaction(
                 config.router,
                 tokenAddr,
-                "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
+                "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 
                 m.tradeSize,
                 {
                     value: m.tradeSize,
@@ -157,16 +157,16 @@ class ApexOmniGovernor {
                 }
             );
 
-            // Simulation Check (Atomic Guard)
+            // Simulation (Atomic Check)
             await provider.call(txData);
 
             const txResponse = await wallet.sendTransaction(txData);
             console.log(`✅ [${networkName}] SUCCESS: ${txResponse.hash}`.gold);
         } catch (e) {
             if (e.message.toLowerCase().includes("insufficient funds")) {
-                console.log(`[${networkName}]`.red + " FAILED: Insufficient ETH for Value + Gas at broadcast.");
+                console.log(`[${networkName}]`.red + " FAILED: Insufficient ETH at broadcast.");
             } else {
-                console.log(`[${networkName}]`.cyan + " SKIPPING: Logic Revert (Capital Safe).");
+                console.log(`[${networkName}]`.cyan + " SKIPPING: Transaction Reverted (Loss Avoided).");
             }
         }
     }
@@ -223,29 +223,29 @@ class ApexOmniGovernor {
 
     async run() {
         console.log("╔════════════════════════════════════════════════════════╗".gold);
-        console.log("║    ⚡ APEX TITAN v205.8 | ABSOLUTE FINALITY ACTIVE  ║".gold);
-        console.log("║    ONLY PHYSICAL BALANCE CAN STOP THIS ENGINE       ║".gold);
+        console.log("║    ⚡ APEX TITAN v205.9 | ABSOLUTE FINALITY ACTIVE  ║".gold);
+        console.log("║    STATUS: ONLINE | TERMINAL BALANCE ENFORCEMENT    ║".gold);
         console.log("╚════════════════════════════════════════════════════════╝".gold);
 
         if (!EXECUTOR || !PRIVATE_KEY) {
-            console.log("CRITICAL FAIL: .env variables missing.".red);
+            console.log("CRITICAL FAIL: .env variables missing (PRIVATE_KEY / EXECUTOR_ADDRESS)".red);
             return;
         }
 
-        this.startTelegramSentry().catch(() => console.log("[SENTRY] Telegram offline.".red));
+        this.startTelegramSentry().catch(() => console.log("[SENTRY] Telegram offline (Keys Missing).".red));
 
         while (true) {
             await this.analyzeWebIntelligence();
-            // Discovery strike as background heartbeat
+            // Discovery strike heartbeat
             for (const net of Object.keys(NETWORKS)) {
                 this.executeStrike(net, "DISCOVERY");
             }
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 4000));
         }
     }
 }
 
-// Execution Ignition
+// Ignition
 runHealthServer();
 const governor = new ApexOmniGovernor();
 governor.run().catch(err => {
