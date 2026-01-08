@@ -1,6 +1,6 @@
 /**
  * ===============================================================================
- * APEX PREDATOR v204.8 (JS-UNIFIED - DIRECT SINGULARITY)
+ * APEX PREDATOR v204.9 (JS-UNIFIED - DIRECT SINGULARITY)
  * ===============================================================================
  * STATUS: DIRECT TRADING FINALITY (NO FLASH LOANS)
  * CAPABILITIES UNIFIED:
@@ -33,7 +33,7 @@ const runHealthServer = () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             engine: "APEX_TITAN",
-            version: "204.8-JS",
+            version: "204.9-JS",
             mode: "DIRECT_TRADING",
             keys_detected: !!(process.env.PRIVATE_KEY && process.env.EXECUTOR_ADDRESS),
             telegram_active: !!(process.env.TG_API_ID)
@@ -239,7 +239,7 @@ class ApexOmniGovernor {
 
     async run() {
         console.log("╔════════════════════════════════════════════════════════╗".gold);
-        console.log("║    ⚡ APEX TITAN v204.8 | DIRECT SINGULARITY ACTIVE ║".gold);
+        console.log("║    ⚡ APEX TITAN v204.9 | DIRECT SINGULARITY ACTIVE ║".gold);
         console.log("║    NETWORKS: ETH, BASE, ARB, POLY | OWN CAPITAL     ║".gold);
         console.log("╚════════════════════════════════════════════════════════╝".gold);
 
@@ -253,13 +253,17 @@ class ApexOmniGovernor {
         while (true) {
             const webSignals = await this.ai.analyzeWebIntelligence();
             const tasks = [];
+
             for (const net of Object.keys(NETWORKS)) {
                 if (webSignals.length > 0) {
-                    for (const s of webSignals) tasks.push(this.executeDirectStrike(net, s.ticker, "WEB_AI"));
+                    for (const s of webSignals) {
+                        tasks.push(this.executeDirectStrike(net, s.ticker, "WEB_AI"));
+                    }
                 } else {
                     tasks.push(this.executeDirectStrike(net, "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00", "DISCOVERY"));
                 }
             }
+
             if (tasks.length > 0) await Promise.allSettled(tasks);
             await new Promise(r => setTimeout(r, 1000));
         }
@@ -268,4 +272,5 @@ class ApexOmniGovernor {
 
 // Start
 runHealthServer();
-new ApexOmniGovernor().run().catch(console.error);
+const governor = new ApexOmniGovernor();
+governor.run().catch(console.error);
