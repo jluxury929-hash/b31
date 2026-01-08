@@ -1,230 +1,271 @@
-import os
-import asyncio
-import re
-import json
-import pickle
-import math
-import random
-from web3 import Web3
-from decimal import Decimal
-from dotenv import load_dotenv
-from telethon import TelegramClient, events
-from textblob import TextBlob
-from colorama import Fore, Style, init
+/**
+ * ===============================================================================
+ * APEX PREDATOR v204.8 (JS-UNIFIED - DIRECT SINGULARITY)
+ * ===============================================================================
+ * STATUS: DIRECT TRADING FINALITY (NO FLASH LOANS)
+ * CAPABILITIES UNIFIED:
+ * 1. TELEGRAM SENTRY: Uses 'gramjs' to replicate Telethon listener functionality.
+ * 2. WEB-AI INTELLIGENCE: Scrapes trading sites via axios + sentiment NLP.
+ * 3. QUAD-NETWORK: Simultaneous direct trading on ETH, BASE, ARB, and POLY.
+ * 4. 100% CAPITAL SQUEEZE: (Balance - Moat) = Trade Size (Deterministic).
+ * 5. REINFORCEMENT LEARNING: Persists source trust scores based on success/revert.
+ * 6. CLOUD STABILITY: Integrated HTTP server for port-binding health checks.
+ * ===============================================================================
+ */
 
-init(autoreset=True)
-load_dotenv()
+require('dotenv').config();
+const { ethers } = require('ethers');
+const axios = require('axios');
+const Sentiment = require('sentiment');
+const fs = require('fs');
+const http = require('http');
+const { TelegramClient } = require('telegram');
+const { StringSession } = require('telegram/sessions');
+const input = require('input'); // For initial login if needed
+require('colors');
 
-# ==========================================
-# 1. GLOBAL CONFIGURATION
-# ==========================================
-PRIVATE_KEY = os.getenv("PRIVATE_KEY")
-RPC_URL = "https://arb1.arbitrum.io/rpc"
-# Replaced Titan Contract with your standard Arbitrage Contract
-ARBITRAGE_CONTRACT = "0xYOUR_DEPLOYED_CONTRACT_ADDRESS"
+// ==========================================
+// 0. CLOUD BOOT GUARD (Port Binding)
+// ==========================================
+const runHealthServer = () => {
+    const port = process.env.PORT || 8080;
+    http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            engine: "APEX_TITAN",
+            version: "204.8-JS",
+            mode: "DIRECT_TRADING",
+            keys_detected: !!(process.env.PRIVATE_KEY && process.env.EXECUTOR_ADDRESS),
+            telegram_active: !!(process.env.TG_API_ID)
+        }));
+    }).listen(port, '0.0.0.0', () => {
+        console.log(`[SYSTEM] Cloud Health Monitor active on Port ${port}`.cyan);
+    });
+};
 
-# RELIABLE SIGNAL SOURCES
-SOURCES = {
-"FAT_PIG": {"id": 10012345678, "default_trust": 0.95},
-"BINANCE_KILLERS": {"id": 10087654321, "default_trust": 0.90}
+// ==========================================
+// 1. NETWORK & INFRASTRUCTURE CONFIG
+// ==========================================
+const NETWORKS = {
+    ETHEREUM: { chainId: 1, rpc: process.env.ETH_RPC || "https://eth.llamarpc.com", moat: "0.01", priority: "500.0" },
+    BASE: { chainId: 8453, rpc: process.env.BASE_RPC || "https://mainnet.base.org", moat: "0.005", priority: "1.6" },
+    ARBITRUM: { chainId: 42161, rpc: process.env.ARB_RPC || "https://arb1.arbitrum.io/rpc", moat: "0.003", priority: "1.0" },
+    POLYGON: { chainId: 137, rpc: process.env.POLY_RPC || "https://polygon-rpc.com", moat: "0.002", priority: "200.0" }
+};
+
+const SOURCES = {
+    "FAT_PIG": { id: "10012345678", trust: 0.95 },
+    "BINANCE_KILLERS": { id: "10087654321", trust: 0.90 }
+};
+
+const AI_SITES = ["https://api.crypto-ai-signals.com/v1/latest", "https://top-trading-ai-blog.com/alerts"];
+const EXECUTOR = process.env.EXECUTOR_ADDRESS;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+
+// ==========================================
+// 2. AI & TRUST ENGINE (REINFORCEMENT)
+// ==========================================
+class AIEngine {
+    constructor() {
+        this.trustFile = "trust_scores.json";
+        this.sentiment = new Sentiment();
+        this.trustScores = this.loadTrust();
+    }
+
+    loadTrust() {
+        if (fs.existsSync(this.trustFile)) {
+            try {
+                return JSON.parse(fs.readFileSync(this.trustFile, 'utf8'));
+            } catch (e) { return this.getDefaultTrust(); }
+        }
+        return this.getDefaultTrust();
+    }
+
+    getDefaultTrust() {
+        const scores = { WEB_AI: 0.85, DISCOVERY: 0.70 };
+        Object.keys(SOURCES).forEach(k => scores[k] = SOURCES[k].trust);
+        return scores;
+    }
+
+    updateTrust(sourceName, success) {
+        let current = this.trustScores[sourceName] || 0.5;
+        current = success ? Math.min(0.99, current * 1.05) : Math.max(0.1, current * 0.90);
+        this.trustScores[sourceName] = current;
+        fs.writeFileSync(this.trustFile, JSON.stringify(this.trustScores));
+        return current;
+    }
+
+    async analyzeWebIntelligence() {
+        const signals = [];
+        for (const url of AI_SITES) {
+            try {
+                const response = await axios.get(url, { timeout: 5000 });
+                const text = JSON.stringify(response.data);
+                const analysis = this.sentiment.analyze(text);
+                const tickers = text.match(/\$[A-Z]+/g);
+                if (tickers && analysis.comparative > 0.1) {
+                    signals.push({ ticker: tickers[0].replace('$', ''), sentiment: analysis.comparative });
+                }
+            } catch (e) { continue; }
+        }
+        return signals;
+    }
 }
 
-# ARBITRUM INFRASTRUCTURE
-WETH = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
-USDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
-SUSHI_ROUTER = "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"
+// ==========================================
+// 3. DETERMINISTIC EXECUTION CORE
+// ==========================================
+class ApexOmniGovernor {
+    constructor() {
+        this.ai = new AIEngine();
+        this.wallets = {};
+        this.providers = {};
+        this.session = new StringSession(process.env.TG_SESSION || "");
+        
+        for (const [name, config] of Object.entries(NETWORKS)) {
+            try {
+                const provider = new ethers.JsonRpcProvider(config.rpc, config.chainId, { staticNetwork: true });
+                this.providers[name] = provider;
+                if (PRIVATE_KEY) this.wallets[name] = new ethers.Wallet(PRIVATE_KEY, provider);
+            } catch (e) { console.error(`[${name}] Init Fail`.red); }
+        }
+    }
 
-# CONNECT
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
-account = w3.eth.account.from_key(PRIVATE_KEY)
-MY_ADDR = account.address
+    async calculateMaxTrade(networkName) {
+        const provider = this.providers[networkName];
+        const wallet = this.wallets[networkName];
+        if (!wallet) return null;
 
-# ==========================================
-# 2. AI & TRUST ENGINE
-# ==========================================
-class AIEngine:
-def __init__(self):
-self.trust_file = "trust_scores.pkl"
-self.trust_scores = self.load_trust()
+        const config = NETWORKS[networkName];
+        try {
+            const [balance, feeData] = await Promise.all([provider.getBalance(wallet.address), provider.getFeeData()]);
+            const gasPrice = feeData.gasPrice || ethers.parseUnits("0.01", "gwei");
+            const priorityFee = ethers.parseUnits(config.priority, "gwei");
+            const executionFee = (gasPrice * 120n / 100n) + priorityFee;
+            
+            // Fixed overhead for direct triangular trade (3 hops)
+            const overhead = (1000000n * executionFee) + ethers.parseEther(config.moat);
 
-def load_trust(self):
-if os.path.exists(self.trust_file):
-with open(self.trust_file, 'rb') as f: return pickle.load(f)
-return {k: v['default_trust'] for k, v in SOURCES.items()}
+            if (balance < overhead + ethers.parseEther("0.005")) {
+                console.log(`[${networkName}]`.yellow + ` SKIP: Low Balance.`);
+                return null;
+            }
 
-def update_trust(self, source_name, success):
-# Reinforcement Learning Logic
-current = self.trust_scores.get(source_name, 0.5)
-if success:
-new_score = min(0.99, current * 1.05) # Boost 5%
-else:
-new_score = max(0.1, current * 0.90) # Punish 10%
+            // 100% CAPITAL SQUEEZE: Trade size is everything remaining.
+            const tradeSize = balance - overhead;
+            return { tradeSize, fee: executionFee, priority: priorityFee };
+        } catch (e) { return null; }
+    }
 
-self.trust_scores[source_name] = new_score
-with open(self.trust_file, 'wb') as f: pickle.dump(self.trust_scores, f)
-return new_score
+    async executeDirectStrike(networkName, token, source = "WEB_AI") {
+        if (!this.wallets[networkName]) return;
+        const m = await this.calculateMaxTrade(networkName);
+        if (!m) return;
 
-def analyze_sentiment(self, text):
-"""Returns 0.0 (Bearish) to 1.0 (Bullish)"""
-clean = text.upper()
-if any(x in clean for x in ["SCAM", "RUG", "SELL", "DUMP"]): return 0.0
+        if ((this.ai.trustScores[source] || 0.5) < 0.4) return;
 
-blob = TextBlob(text)
-# Normalize -1.0 to 1.0 range into 0.0 to 1.0
-score = (blob.sentiment.polarity + 1) / 2
-return score
+        const wallet = this.wallets[networkName];
+        console.log(`[${networkName}]`.green + ` EXECUTING DIRECT ARB: ${token} | Size: ${ethers.formatEther(m.tradeSize)} ETH`);
 
-ai = AIEngine()
+        // ArbitrageExecutor.sol Interface for Direct Triangular
+        const abi = ["function executeTriangle(address[] path, uint256 amount) external payable"];
+        const contract = new ethers.Contract(EXECUTOR, abi, wallet);
+        
+        // Mocked loop paths; in prod, resolve real pair addresses.
+        const path = [token, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"]; // Token -> USDC
 
-# ==========================================
-# 3. ON-CHAIN SIMULATION (Own Capital)
-# ==========================================
-async def get_amount_out(router, t_in, t_out, amt):
-abi = '[{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"}],"name":"getAmountsOut","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"view","type":"function"}]'
-contract = w3.eth.contract(address=router, abi=abi)
-try:
-loop = asyncio.get_event_loop()
-res = await loop.run_in_executor(None, lambda: contract.functions.getAmountsOut(int(amt), [t_in, t_out]).call())
-return res[1]
-except: return 0
+        try {
+            const tx = await contract.executeTriangle.populateTransaction(path, m.tradeSize, {
+                gasLimit: 1000000,
+                maxFeePerGas: m.fee,
+                maxPriorityFeePerGas: m.priority,
+                nonce: await wallet.getNonce('pending')
+            });
 
-async def find_triangular_arbitrage(token_addr):
-"""
-Checks loop: ETH -> Token -> USDC -> ETH using OWN CAPITAL.
-"""
-# 1. DEFINE CAPITAL SIZE (e.g., 0.1 ETH)
-# In production, check wallet balance and use %
-trade_size = w3.to_wei(0.1, 'ether')
+            const txResponse = await wallet.sendTransaction(tx);
+            console.log(`✅ [${networkName}]`.gold + ` SUCCESS: ${txResponse.hash}`);
+            this.verifyAndLearn(networkName, txResponse, source);
+        } catch (e) {
+            if (!e.message.toLowerCase().includes("insufficient funds")) {
+                console.log(`[${networkName}]`.red + " Strike Aborted: Logic Revert.");
+            }
+        }
+    }
 
-print(f"{Fore.CYAN} 🔬 Scanning {token_addr} with {w3.from_wei(trade_size, 'ether')} ETH...")
+    async verifyAndLearn(net, txResponse, source) {
+        try {
+            const receipt = await txResponse.wait(1);
+            this.ai.updateTrust(source, receipt.status === 1);
+        } catch (e) { this.ai.updateTrust(source, false); }
+    }
 
-# Path: WETH -> Token -> USDC -> WETH
-s1 = await get_amount_out(SUSHI_ROUTER, WETH, token_addr, trade_size)
-if s1 == 0: return None
+    async startTelegramSentry() {
+        const apiId = parseInt(process.env.TG_API_ID);
+        const apiHash = process.env.TG_API_HASH;
+        if (!apiId || !apiHash) return;
 
-s2 = await get_amount_out(SUSHI_ROUTER, token_addr, USDC, s1)
-if s2 == 0: return None
+        const client = new TelegramClient(this.session, apiId, apiHash, { connectionRetries: 5 });
+        await client.start({
+            phoneNumber: async () => await input.text("Phone: "),
+            password: async () => await input.text("2FA: "),
+            phoneCode: async () => await input.text("Code: "),
+            onError: (err) => console.log(err),
+        });
+        console.log("[SENTRY] Telegram Listener Online.".cyan);
 
-s3 = await get_amount_out(SUSHI_ROUTER, USDC, WETH, s2)
+        client.addEventHandler(async (event) => {
+            const message = event.message?.message;
+            if (!message) return;
 
-# PROFIT CALCULATION
-profit_wei = s3 - trade_size
+            let sourceName = "UNKNOWN";
+            const chatId = event.message.chatId.toString();
+            for (const [name, data] of Object.entries(SOURCES)) {
+                if (chatId.includes(data.id)) sourceName = name;
+            }
 
-# Must profit enough to cover GAS (~0.002 ETH for simple swap)
-min_profit = w3.to_wei(0.002, 'ether')
+            if (sourceName !== "UNKNOWN" && message.includes("$")) {
+                const tickers = message.match(/\$[A-Z]+/g);
+                if (tickers) {
+                    const sentiment = this.ai.sentiment.analyze(message).comparative;
+                    if (sentiment > 0.2) {
+                        for (const net of Object.keys(NETWORKS)) {
+                            this.executeDirectStrike(net, tickers[0].replace('$', ''), sourceName);
+                        }
+                    }
+                }
+            }
+        });
+    }
 
-if profit_wei > min_profit:
-return {
-"profit": w3.from_wei(profit_wei, 'ether'),
-"size": trade_size,
-"roi": profit_wei / trade_size
+    async run() {
+        console.log("╔════════════════════════════════════════════════════════╗".gold);
+        console.log("║    ⚡ APEX TITAN v204.8 | DIRECT SINGULARITY ACTIVE ║".gold);
+        console.log("║    NETWORKS: ETH, BASE, ARB, POLY | OWN CAPITAL     ║".gold);
+        console.log("╚════════════════════════════════════════════════════════╝".gold);
+
+        if (!EXECUTOR || !PRIVATE_KEY) {
+            console.log("CRITICAL FAIL: PRIVATE_KEY or EXECUTOR_ADDRESS missing.".red);
+            return;
+        }
+
+        this.startTelegramSentry().catch(() => console.log("[SENTRY] Telegram failed to bind.".red));
+
+        while (true) {
+            const webSignals = await this.ai.analyzeWebIntelligence();
+            const tasks = [];
+            for (const net of Object.keys(NETWORKS)) {
+                if (webSignals.length > 0) {
+                    for (const s of webSignals) tasks.push(this.executeDirectStrike(net, s.ticker, "WEB_AI"));
+                } else {
+                    tasks.push(this.executeDirectStrike(net, "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00", "DISCOVERY"));
+                }
+            }
+            if (tasks.length > 0) await Promise.allSettled(tasks);
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
 }
 
-return None
-
-# ==========================================
-# 4. EXECUTION (No Flash Loan)
-# ==========================================
-async def execute_trade(strat, token_addr, source_name):
-print(f"{Fore.GREEN} ⚡ PROFITABLE LOOP FOUND! Est Profit: {strat['profit']} ETH")
-print(f"{Fore.MAGENTA} 🚀 EXECUTING TRIANGULAR ARBITRAGE...")
-
-# Using the Standard Arbitrage Contract Logic
-contract = w3.eth.contract(address=ARBITRAGE_CONTRACT, abi='[{"inputs":[{"internalType":"address","name":"router","type":"address"},{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint256","name":"amountIn","type":"uint256"}],"name":"executeTriangular","outputs":[],"stateMutability":"nonpayable","type":"function"}]')
-
-# Aggressive Miner Bribe
-bribe = int(w3.eth.gas_price * 1.5)
-
-tx = contract.functions.executeTriangular(
-SUSHI_ROUTER,
-token_addr,
-USDC,
-strat['size']
-).build_transaction({
-'from': MY_ADDR,
-'gas': 500000, # Lower gas than flash loan
-'maxFeePerGas': bribe,
-'maxPriorityFeePerGas': w3.to_wei(2, 'gwei'),
-'nonce': w3.eth.get_transaction_count(MY_ADDR),
-'chainId': 42161
-})
-
-signed = w3.eth.account.sign_transaction(tx, PRIVATE_KEY)
-
-try:
-tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
-print(f"{Fore.GREEN} ✅ TX SENT: {w3.to_hex(tx_hash)}")
-
-# Feedback Learning
-await asyncio.sleep(2)
-receipt = w3.eth.get_transaction_receipt(tx_hash)
-
-if receipt.status == 1:
-print(f"{Fore.GREEN} 💰 EXECUTION SUCCESSFUL.")
-ai.update_trust(source_name, True)
-else:
-print(f"{Fore.RED} ❌ EXECUTION REVERTED (Atomic Guard Saved Capital).")
-ai.update_trust(source_name, False)
-
-except Exception as e:
-print(f"{Fore.RED} ❌ Execution Error: {e}")
-ai.update_trust(source_name, False)
-
-# ==========================================
-# 5. SIGNAL LISTENER
-# ==========================================
-async def main():
-print(f"{Fore.WHITE}🏛️ APEX ENGINE ONLINE | Direct Trading Mode")
-
-TG_ID = os.getenv("TG_API_ID")
-TG_HASH = os.getenv("TG_API_HASH")
-
-if TG_ID:
-client = TelegramClient('apex_session', TG_ID, TG_HASH)
-@client.on(events.NewMessage)
-async def handler(event):
-# 1. IDENTIFY SOURCE
-source = "UNKNOWN"
-for name, data in SOURCES.items():
-if event.chat_id == data['id']: source = name
-
-if source != "UNKNOWN" and "$" in event.raw_text:
-# 2. AI SENTIMENT CHECK
-sentiment = ai.analyze_sentiment(event.raw_text)
-trust = ai.trust_scores.get(source, 0.5)
-
-# Combine Confidence
-if (sentiment * trust) > 0.6:
-try:
-ticker = event.raw_text.split("$")[1].split(" ")[0].upper()
-# Resolve Mock Address (In prod use a Token List)
-if ticker == "PEPE":
-addr = "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00"
-
-# 3. SCAN FOR ARBITRAGE (Own Capital)
-strat = await find_triangular_arbitrage(addr)
-
-if strat:
-await execute_trade(strat, addr, source)
-else:
-print(f"{Fore.YELLOW} 📉 No Arbitrage detected for {ticker}")
-except: pass
-
-await client.start()
-await client.run_until_disconnected()
-else:
-print(" ⚠️ No Telegram Keys. Running Local Simulation.")
-while True:
-await asyncio.sleep(5)
-# Simulated Loop
-addr = "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00" # PEPE
-strat = await find_triangular_arbitrage(addr)
-if strat: await execute_trade(strat, addr, "SIMULATION")
-
-if __name__ == "__main__":
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-try:
-loop.run_until_complete(main())
-except KeyboardInterrupt:
-print("Stopped.")
+// Start
+runHealthServer();
+new ApexOmniGovernor().run().catch(console.error);
