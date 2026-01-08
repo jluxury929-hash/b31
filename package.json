@@ -1,17 +1,20 @@
 {
-  "name": "titan-flash-engine",
-  "version": "201.0.0",
-  "description": "AI-Driven Deterministic Flash Loan Arbitrage Bot",
-  "main": "titan_backend.py",
-  "scripts": {
-    "start": "python3 titan_backend.py",
-    "setup": "pip install web3 numpy python-dotenv telethon textblob colorama aiohttp",
-    "download-models": "python3 -m textblob.download_corpora"
-  },
-  "dependencies": {
-    "dotenv": "^16.0.0"
-  },
-  "engines": {
-    "node": ">=14.0.0"
-  }
+"name": "titan-flash-engine",
+"version": "204.6.0",
+"description": "AI-Driven Deterministic Flash Loan Arbitrage Bot (JS Unified)",
+"main": "server.js",
+"scripts": {
+"start": "node server.js",
+"setup": "npm install"
+},
+"dependencies": {
+"ethers": "^6.10.0",
+"axios": "^1.6.0",
+"sentiment": "^5.0.2",
+"dotenv": "^16.4.1",
+"colors": "^1.4.0"
+},
+"engines": {
+"node": ">=18.0.0"
+}
 }
