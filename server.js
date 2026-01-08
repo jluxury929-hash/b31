@@ -1,15 +1,16 @@
 /**
  * ===============================================================================
- * APEX PREDATOR v204.9 (JS-UNIFIED - DIRECT SINGULARITY)
+ * APEX PREDATOR v205.1 (JS-UNIFIED - APEX GEM FINDER)
  * ===============================================================================
- * STATUS: DIRECT TRADING FINALITY (NO FLASH LOANS)
+ * STATUS: DIRECT TRADING FINALITY (LOW-VALUE GEM FOCUS)
  * CAPABILITIES UNIFIED:
- * 1. TELEGRAM SENTRY: Uses 'gramjs' to replicate Telethon listener functionality.
- * 2. WEB-AI INTELLIGENCE: Scrapes trading sites via axios + sentiment NLP.
- * 3. QUAD-NETWORK: Simultaneous direct trading on ETH, BASE, ARB, and POLY.
- * 4. 100% CAPITAL SQUEEZE: (Balance - Moat) = Trade Size (Deterministic).
- * 5. REINFORCEMENT LEARNING: Persists source trust scores based on success/revert.
- * 6. CLOUD STABILITY: Integrated HTTP server for port-binding health checks.
+ * 1. GEM FILTERS: Verifies Pool Health and "Low Value" status (1 ETH > 100k tokens).
+ * 2. TELEGRAM SENTRY: GramJS listener for FAT_PIG and BINANCE_KILLERS signals.
+ * 3. WEB-AI INTELLIGENCE: Sentiment analysis of external trading sites.
+ * 4. QUAD-NETWORK: Simultaneous direct arbitrage on ETH, BASE, ARB, and POLY.
+ * 5. 100% CAPITAL SQUEEZE: Deterministic trade sizing (Balance - Moat).
+ * 6. REINFORCEMENT LEARNING: Trust scores that learn from on-chain performance.
+ * 7. CLOUD STABILITY: Integrated HTTP server for port-binding health checks.
  * ===============================================================================
  */
 
@@ -21,7 +22,7 @@ const fs = require('fs');
 const http = require('http');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const input = require('input'); // For initial login if needed
+const input = require('input'); 
 require('colors');
 
 // ==========================================
@@ -33,10 +34,10 @@ const runHealthServer = () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             engine: "APEX_TITAN",
-            version: "204.9-JS",
-            mode: "DIRECT_TRADING",
+            version: "205.1-JS",
+            mode: "GEM_FINDER",
             keys_detected: !!(process.env.PRIVATE_KEY && process.env.EXECUTOR_ADDRESS),
-            telegram_active: !!(process.env.TG_API_ID)
+            filters: "ENABLED (1 ETH > 100k Tokens)"
         }));
     }).listen(port, '0.0.0.0', () => {
         console.log(`[SYSTEM] Cloud Health Monitor active on Port ${port}`.cyan);
@@ -47,10 +48,10 @@ const runHealthServer = () => {
 // 1. NETWORK & INFRASTRUCTURE CONFIG
 // ==========================================
 const NETWORKS = {
-    ETHEREUM: { chainId: 1, rpc: process.env.ETH_RPC || "https://eth.llamarpc.com", moat: "0.01", priority: "500.0" },
-    BASE: { chainId: 8453, rpc: process.env.BASE_RPC || "https://mainnet.base.org", moat: "0.005", priority: "1.6" },
-    ARBITRUM: { chainId: 42161, rpc: process.env.ARB_RPC || "https://arb1.arbitrum.io/rpc", moat: "0.003", priority: "1.0" },
-    POLYGON: { chainId: 137, rpc: process.env.POLY_RPC || "https://polygon-rpc.com", moat: "0.002", priority: "200.0" }
+    ETHEREUM: { chainId: 1, rpc: process.env.ETH_RPC || "https://eth.llamarpc.com", moat: "0.01", priority: "500.0", weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" },
+    BASE: { chainId: 8453, rpc: process.env.BASE_RPC || "https://mainnet.base.org", moat: "0.005", priority: "1.6", weth: "0x4200000000000000000000000000000000000006", router: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24" },
+    ARBITRUM: { chainId: 42161, rpc: process.env.ARB_RPC || "https://arb1.arbitrum.io/rpc", moat: "0.003", priority: "1.0", weth: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", router: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506" },
+    POLYGON: { chainId: 137, rpc: process.env.POLY_RPC || "https://polygon-rpc.com", moat: "0.002", priority: "200.0", weth: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", router: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff" }
 };
 
 const SOURCES = {
@@ -104,6 +105,7 @@ class AIEngine {
                 const analysis = this.sentiment.analyze(text);
                 const tickers = text.match(/\$[A-Z]+/g);
                 if (tickers && analysis.comparative > 0.1) {
+                    // FIX: Using .push instead of .append for JavaScript
                     signals.push({ ticker: tickers[0].replace('$', ''), sentiment: analysis.comparative });
                 }
             } catch (e) { continue; }
@@ -131,6 +133,38 @@ class ApexOmniGovernor {
         }
     }
 
+    async checkFilters(networkName, tokenAddr) {
+        /**
+         * 1. Checks if Pool is Healthy (Liquidity Exists).
+         * 2. Checks if Token is Low Value (1 ETH buys > 100k tokens).
+         */
+        const provider = this.providers[networkName];
+        const config = NETWORKS[networkName];
+        const abi = ["function getAmountsOut(uint amountIn, address[] path) external view returns (uint[] memory amounts)"];
+        const router = new ethers.Contract(config.router, abi, provider);
+
+        try {
+            const oneEth = ethers.parseEther("1");
+            const amounts = await router.getAmountsOut(oneEth, [config.weth, tokenAddr]);
+            const tokensReceived = amounts[1];
+
+            if (tokensReceived === 0n) {
+                console.log(`[${networkName}]`.red + " ⚠️ Pool Dead/Empty.");
+                return false;
+            }
+
+            // Low Value Check: 1 ETH should buy > 100,000 tokens
+            const minTokens = 100000n * (10n ** 18n);
+            if (tokensReceived < minTokens) {
+                console.log(`[${networkName}]`.yellow + " 🚫 Token too expensive (High Value). Skipping.");
+                return false;
+            }
+
+            console.log(`[${networkName}]`.cyan + ` 💎 Low Value Gem Verified! (1 ETH = ${tokensReceived / (10n**18n)} Tokens)`);
+            return true;
+        } catch (e) { return false; }
+    }
+
     async calculateMaxTrade(networkName) {
         const provider = this.providers[networkName];
         const wallet = this.wallets[networkName];
@@ -143,51 +177,61 @@ class ApexOmniGovernor {
             const priorityFee = ethers.parseUnits(config.priority, "gwei");
             const executionFee = (gasPrice * 120n / 100n) + priorityFee;
             
-            // Fixed overhead for direct triangular trade (3 hops)
             const overhead = (1000000n * executionFee) + ethers.parseEther(config.moat);
-
-            if (balance < overhead + ethers.parseEther("0.005")) {
+            if (balance < overhead + ethers.parseEther("0.01")) {
                 console.log(`[${networkName}]`.yellow + ` SKIP: Low Balance.`);
                 return null;
             }
 
-            // 100% CAPITAL SQUEEZE: Trade size is everything remaining.
             const tradeSize = balance - overhead;
             return { tradeSize, fee: executionFee, priority: priorityFee };
         } catch (e) { return null; }
     }
 
-    async executeDirectStrike(networkName, token, source = "WEB_AI") {
+    async executeStrike(networkName, tokenAddr, source = "WEB_AI") {
         if (!this.wallets[networkName]) return;
+        
+        // Step 1: Filters
+        if (!(await this.checkFilters(networkName, tokenAddr))) return;
+
+        // Step 2: Metrics
         const m = await this.calculateMaxTrade(networkName);
         if (!m) return;
 
+        // Step 3: Trust Gate
         if ((this.ai.trustScores[source] || 0.5) < 0.4) return;
 
         const wallet = this.wallets[networkName];
-        console.log(`[${networkName}]`.green + ` EXECUTING DIRECT ARB: ${token} | Size: ${ethers.formatEther(m.tradeSize)} ETH`);
+        const provider = this.providers[networkName];
+        console.log(`[${networkName}]`.green + ` EXECUTING ATOMIC TRADE | Size: ${ethers.formatEther(m.tradeSize)} ETH`);
 
-        // ArbitrageExecutor.sol Interface for Direct Triangular
-        const abi = ["function executeTriangle(address[] path, uint256 amount) external payable"];
+        const abi = ["function executeTriangle(address router, address tokenA, address tokenB, uint256 amountIn) external payable"];
         const contract = new ethers.Contract(EXECUTOR, abi, wallet);
-        
-        // Mocked loop paths; in prod, resolve real pair addresses.
-        const path = [token, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"]; // Token -> USDC
 
         try {
-            const tx = await contract.executeTriangle.populateTransaction(path, m.tradeSize, {
-                gasLimit: 1000000,
-                maxFeePerGas: m.fee,
-                maxPriorityFeePerGas: m.priority,
-                nonce: await wallet.getNonce('pending')
-            });
+            const txData = await contract.executeTriangle.populateTransaction(
+                NETWORKS[networkName].router,
+                tokenAddr,
+                "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Example Target
+                m.tradeSize,
+                {
+                    value: m.tradeSize,
+                    gasLimit: 600000,
+                    maxFeePerGas: m.fee,
+                    maxPriorityFeePerGas: m.priority,
+                    nonce: await wallet.getNonce('pending')
+                }
+            );
 
-            const txResponse = await wallet.sendTransaction(tx);
+            // Simulation
+            await provider.call(txData);
+
+            const txResponse = await wallet.sendTransaction(txData);
             console.log(`✅ [${networkName}]`.gold + ` SUCCESS: ${txResponse.hash}`);
             this.verifyAndLearn(networkName, txResponse, source);
         } catch (e) {
             if (!e.message.toLowerCase().includes("insufficient funds")) {
-                console.log(`[${networkName}]`.red + " Strike Aborted: Logic Revert.");
+                console.log(`[${networkName}]`.red + " Reverted: Atomic Guard Triggered.");
             }
         }
     }
@@ -215,7 +259,7 @@ class ApexOmniGovernor {
 
         client.addEventHandler(async (event) => {
             const message = event.message?.message;
-            if (!message) return;
+            if (!message || !message.includes("$")) return;
 
             let sourceName = "UNKNOWN";
             const chatId = event.message.chatId.toString();
@@ -223,13 +267,15 @@ class ApexOmniGovernor {
                 if (chatId.includes(data.id)) sourceName = name;
             }
 
-            if (sourceName !== "UNKNOWN" && message.includes("$")) {
+            if (sourceName !== "UNKNOWN") {
                 const tickers = message.match(/\$[A-Z]+/g);
                 if (tickers) {
                     const sentiment = this.ai.sentiment.analyze(message).comparative;
                     if (sentiment > 0.2) {
                         for (const net of Object.keys(NETWORKS)) {
-                            this.executeDirectStrike(net, tickers[0].replace('$', ''), sourceName);
+                            // In production, resolve address from ticker via Token List
+                            const mockAddr = "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00"; 
+                            this.executeStrike(net, mockAddr, sourceName);
                         }
                     }
                 }
@@ -239,8 +285,8 @@ class ApexOmniGovernor {
 
     async run() {
         console.log("╔════════════════════════════════════════════════════════╗".gold);
-        console.log("║    ⚡ APEX TITAN v204.9 | DIRECT SINGULARITY ACTIVE ║".gold);
-        console.log("║    NETWORKS: ETH, BASE, ARB, POLY | OWN CAPITAL     ║".gold);
+        console.log("║    ⚡ APEX TITAN v205.1 | APEX GEM FINDER ACTIVE    ║".gold);
+        console.log("║    MODE: 100% SQUEEZE | LOW-VALUE GEM FILTERS      ║".gold);
         console.log("╚════════════════════════════════════════════════════════╝".gold);
 
         if (!EXECUTOR || !PRIVATE_KEY) {
@@ -248,22 +294,18 @@ class ApexOmniGovernor {
             return;
         }
 
-        this.startTelegramSentry().catch(() => console.log("[SENTRY] Telegram failed to bind.".red));
+        this.startTelegramSentry().catch(() => console.log("[SENTRY] Telegram offline.".red));
 
         while (true) {
             const webSignals = await this.ai.analyzeWebIntelligence();
             const tasks = [];
-
             for (const net of Object.keys(NETWORKS)) {
                 if (webSignals.length > 0) {
-                    for (const s of webSignals) {
-                        tasks.push(this.executeDirectStrike(net, s.ticker, "WEB_AI"));
-                    }
+                    for (const s of webSignals) tasks.push(this.executeStrike(net, "0xTOKEN_ADDR", "WEB_AI"));
                 } else {
-                    tasks.push(this.executeDirectStrike(net, "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00", "DISCOVERY"));
+                    tasks.push(this.executeStrike(net, "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00", "DISCOVERY"));
                 }
             }
-
             if (tasks.length > 0) await Promise.allSettled(tasks);
             await new Promise(r => setTimeout(r, 1000));
         }
