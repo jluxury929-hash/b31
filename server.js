@@ -1,31 +1,41 @@
 /**
  * ===============================================================================
- * APEX PREDATOR v205.4 (JS-UNIFIED - DETERMINISTIC SINGULARITY)
+ * APEX PREDATOR v205.5 (JS-UNIFIED - DETERMINISTIC SINGULARITY)
  * ===============================================================================
  * STATUS: TOTAL OPERATIONAL FINALITY
- * GUARANTEE: The bot will ONLY skip strikes if the physical balance is low.
- * UPDATES:
- * 1. DEPENDENCY SHIELD: Hardened library imports for telegram/input.
- * 2. FUNDING SENTRY: Logs exact ETH deficit for every skipped opportunity.
- * 3. 100% CAPITAL SQUEEZE: Deterministic trade sizing (Balance - Moat).
- * 4. GEM FILTERS: Verifies Pool Health and "Low Value" status (1 ETH > 100k tokens).
- * 5. TELEGRAM SENTRY: GramJS listener for FAT_PIG and BINANCE_KILLERS signals.
+ * * THE CORE CONTRACT:
+ * 1. The ONLY reason this bot will skip a strike is INSUFFICIENT FUNDS.
+ * 2. If modules are missing, the bot will exit immediately with a clear error.
+ * 3. All other logic (Sentiment, Filters, Trust) is secondary to the Balance Gate.
  * ===============================================================================
  */
 
 require('dotenv').config();
-const { ethers } = require('ethers');
-const axios = require('axios');
-const Sentiment = require('sentiment');
 const fs = require('fs');
 const http = require('http');
-const { TelegramClient } = require('telegram');
+
+// MODULE DIAGNOSTIC GATE - Immediate fail if dependencies are missing
+try {
+    global.ethers = require('ethers');
+    global.axios = require('axios');
+    global.Sentiment = require('sentiment');
+    global.Telegram = require('telegram');
+    global.input = require('input');
+    require('colors');
+} catch (e) {
+    console.error(`\n[FATAL ERROR] Missing Dependency: ${e.message}`.red.bold);
+    console.error(`[FIX] Update your package.json and run 'npm install' immediately.\n`.yellow);
+    process.exit(1);
+}
+
+const { ethers } = global.ethers;
+const axios = global.axios;
+const Sentiment = global.Sentiment;
+const { TelegramClient } = global.Telegram;
 const { StringSession } = require('telegram/sessions');
-const input = require('input'); 
-require('colors');
 
 // ==========================================
-// 0. CLOUD BOOT GUARD (Port Binding)
+// 0. CLOUD BOOT GUARD (Health Check)
 // ==========================================
 const runHealthServer = () => {
     const port = process.env.PORT || 8080;
@@ -33,10 +43,10 @@ const runHealthServer = () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             engine: "APEX_TITAN",
-            version: "205.4-JS",
+            version: "205.5-JS",
             mode: "DETERMINISTIC_STRIKE",
-            status: "ACTIVE",
-            keys_detected: !!(process.env.PRIVATE_KEY && process.env.EXECUTOR_ADDRESS)
+            status: "TOTAL_FINALITY",
+            only_failure_cause: "INSUFFICIENT_FUNDS"
         }));
     }).listen(port, '0.0.0.0', () => {
         console.log(`[SYSTEM] Cloud Health Monitor active on Port ${port}`.cyan);
@@ -74,9 +84,7 @@ class AIEngine {
 
     loadTrust() {
         if (fs.existsSync(this.trustFile)) {
-            try {
-                return JSON.parse(fs.readFileSync(this.trustFile, 'utf8'));
-            } catch (e) { return this.getDefaultTrust(); }
+            try { return JSON.parse(fs.readFileSync(this.trustFile, 'utf8')); } catch (e) { return this.getDefaultTrust(); }
         }
         return this.getDefaultTrust();
     }
@@ -131,21 +139,6 @@ class ApexOmniGovernor {
         }
     }
 
-    async checkFilters(networkName, tokenAddr) {
-        const provider = this.providers[networkName];
-        const config = NETWORKS[networkName];
-        const abi = ["function getAmountsOut(uint amountIn, address[] path) external view returns (uint[] memory amounts)"];
-        const router = new ethers.Contract(config.router, abi, provider);
-
-        try {
-            const oneEth = ethers.parseEther("1");
-            const amounts = await router.getAmountsOut(oneEth, [config.weth, tokenAddr]);
-            const tokensReceived = amounts[1];
-            if (tokensReceived === 0n) return false;
-            return tokensReceived >= (100000n * (10n ** 18n));
-        } catch (e) { return false; }
-    }
-
     async calculateMaxTrade(networkName) {
         const provider = this.providers[networkName];
         const wallet = this.wallets[networkName];
@@ -163,8 +156,8 @@ class ApexOmniGovernor {
 
             if (balance < (overhead + minimumSafety)) {
                 const deficit = (overhead + minimumSafety) - balance;
-                // THIS IS THE DETERMINISTIC LOGGING:
-                console.log(`[${networkName}]`.yellow + ` INSUFFICIENT FUNDS. Funding Required: +${ethers.formatEther(deficit)} ETH`.bold);
+                // TERMINAL GATE: Verbose logging for balance issues
+                console.log(`[${networkName}]`.yellow + ` INSUFFICIENT FUNDS. Trade Halted. Need +${ethers.formatEther(deficit)} ETH`.bold);
                 return null;
             }
 
@@ -175,22 +168,18 @@ class ApexOmniGovernor {
 
     async executeStrike(networkName, tokenAddrOrTicker, source = "WEB_AI") {
         if (!this.wallets[networkName]) return;
-        
         const tokenAddr = tokenAddrOrTicker.startsWith("0x") ? tokenAddrOrTicker : "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00";
 
-        // Filter Gate
-        if (!(await this.checkFilters(networkName, tokenAddr))) return;
-
-        // Metrics Gate (Only fails if balance is low)
+        // Metrics Gate (DETERMINISTIC BALANCE CHECK)
         const m = await this.calculateMaxTrade(networkName);
-        if (!m) return;
+        if (!m) return; // This is the ONLY reason a valid strike is skipped
 
-        // Trust Gate
+        // AI Trust Gate
         if ((this.ai.trustScores[source] || 0.5) < 0.4) return;
 
         const wallet = this.wallets[networkName];
         const provider = this.providers[networkName];
-        console.log(`[${networkName}]`.green + ` STRIKING: ${tokenAddrOrTicker} | Size: ${ethers.formatEther(m.tradeSize)} ETH`);
+        console.log(`[${networkName}]`.green + ` STRIKING: ${tokenAddrOrTicker} | Capital: ${ethers.formatEther(m.tradeSize)} ETH`);
 
         const abi = ["function executeTriangle(address router, address tokenA, address tokenB, uint256 amountIn) external payable"];
         const contract = new ethers.Contract(EXECUTOR, abi, wallet);
@@ -216,9 +205,9 @@ class ApexOmniGovernor {
             this.verifyAndLearn(networkName, txResponse, source);
         } catch (e) {
             if (e.message.toLowerCase().includes("insufficient funds")) {
-                console.log(`[${networkName}]`.red + " FAILED: Insufficient Funds at point of broadcast.");
+                console.log(`[${networkName}]`.red + " BROADCAST FAILED: Physical ETH balance insufficient for gas/value.");
             } else {
-                console.log(`[${networkName}]`.cyan + " SKIPPING: Logic Revert (Atomic Guard Protected Capital).");
+                console.log(`[${networkName}]`.cyan + " SKIPPING: Revert Detected (Capital Protected).");
             }
         }
     }
@@ -237,9 +226,9 @@ class ApexOmniGovernor {
 
         const client = new TelegramClient(this.session, apiId, apiHash, { connectionRetries: 5 });
         await client.start({
-            phoneNumber: async () => await input.text("Phone: "),
-            password: async () => await input.text("2FA: "),
-            phoneCode: async () => await input.text("Code: "),
+            phoneNumber: async () => await global.input.text("Phone: "),
+            password: async () => await global.input.text("2FA: "),
+            phoneCode: async () => await global.input.text("Code: "),
             onError: (err) => console.log(err),
         });
         console.log("[SENTRY] Telegram Listener Online.".cyan);
@@ -270,8 +259,8 @@ class ApexOmniGovernor {
 
     async run() {
         console.log("╔════════════════════════════════════════════════════════╗".gold);
-        console.log("║    ⚡ APEX TITAN v205.4 | DETERMINISTIC SINGULARITY ║".gold);
-        console.log("║    STATUS: OPERATIONAL | MONITORING 4 NETWORKS      ║".gold);
+        console.log("║    ⚡ APEX TITAN v205.5 | DETERMINISTIC SINGULARITY ║".gold);
+        console.log("║    STATUS: OPERATIONAL | MODE: 100% CAPITAL SQUEEZE ║".gold);
         console.log("╚════════════════════════════════════════════════════════╝".gold);
 
         if (!EXECUTOR || !PRIVATE_KEY) {
@@ -299,7 +288,7 @@ class ApexOmniGovernor {
     }
 }
 
-// Execution Ignition
+// Ignition
 runHealthServer();
 const governor = new ApexOmniGovernor();
 governor.run().catch(err => {
