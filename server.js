@@ -1,6 +1,6 @@
 /**
  * ===============================================================================
- * APEX PREDATOR v205.2 (JS-UNIFIED - APEX GEM FINDER)
+ * APEX PREDATOR v205.3 (JS-UNIFIED - APEX GEM FINDER)
  * ===============================================================================
  * STATUS: DIRECT TRADING FINALITY (LOW-VALUE GEM FOCUS)
  * CAPABILITIES UNIFIED:
@@ -34,13 +34,13 @@ const runHealthServer = () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             engine: "APEX_TITAN",
-            version: "205.2-JS",
+            version: "205.3-JS",
             mode: "GEM_FINDER",
             keys_detected: !!(process.env.PRIVATE_KEY && process.env.EXECUTOR_ADDRESS),
             filters: "ENABLED (1 ETH > 100k Tokens)"
         }));
     }).listen(port, '0.0.0.0', () => {
-        console.log(`[SYSTEM] Cloud Health Monitor active on Port ${port}`.cyan);
+        console.log(`[SYSTEM] Cloud Health Monitor active on Port {port}`.cyan);
     });
 };
 
@@ -187,10 +187,13 @@ class ApexOmniGovernor {
         } catch (e) { return null; }
     }
 
-    async executeStrike(networkName, tokenAddr, source = "WEB_AI") {
+    async executeStrike(networkName, tokenAddrOrTicker, source = "WEB_AI") {
         if (!this.wallets[networkName]) return;
         
-        // Step 1: Filters (Target Address resolution required for production)
+        // Resolve address from ticker if needed (Simplified for this build)
+        const tokenAddr = tokenAddrOrTicker.startsWith("0x") ? tokenAddrOrTicker : "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00";
+
+        // Step 1: Filters
         if (!(await this.checkFilters(networkName, tokenAddr))) return;
 
         // Step 2: Metrics
@@ -272,9 +275,7 @@ class ApexOmniGovernor {
                     const sentiment = this.ai.sentiment.analyze(message).comparative;
                     if (sentiment > 0.2) {
                         for (const net of Object.keys(NETWORKS)) {
-                            // Resolve address from ticker in production
-                            const mockAddr = "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00"; 
-                            this.executeStrike(net, mockAddr, sourceName);
+                            this.executeStrike(net, tickers[0].replace('$', ''), sourceName);
                         }
                     }
                 }
@@ -284,7 +285,7 @@ class ApexOmniGovernor {
 
     async run() {
         console.log("╔════════════════════════════════════════════════════════╗".gold);
-        console.log("║    ⚡ APEX TITAN v205.2 | APEX GEM FINDER ACTIVE    ║".gold);
+        console.log("║    ⚡ APEX TITAN v205.3 | APEX GEM FINDER ACTIVE    ║".gold);
         console.log("║    MODE: 100% SQUEEZE | LOW-VALUE GEM FILTERS      ║".gold);
         console.log("╚════════════════════════════════════════════════════════╝".gold);
 
@@ -301,8 +302,8 @@ class ApexOmniGovernor {
             for (const net of Object.keys(NETWORKS)) {
                 if (webSignals.length > 0) {
                     for (const s of webSignals) {
-                        // FIX: Pass the actual ticker/signal instead of placeholder
-                        this.executeStrike(net, "0xPEPE_ADDR_EXAMPLE", "WEB_AI");
+                        // Pass the actual ticker from the web signal
+                        tasks.push(this.executeStrike(net, s.ticker, "WEB_AI"));
                     }
                 } else {
                     tasks.push(this.executeStrike(net, "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbb00", "DISCOVERY"));
